@@ -8,8 +8,6 @@ import re
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
-
-
 def number_lines(text: str) -> List[Tuple[int, str]]:
     """
     Split text into lines and return list of (1-based line_number, line_text).

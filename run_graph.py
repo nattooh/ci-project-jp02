@@ -71,7 +71,6 @@ def make_line_window_nodes(docs: List[Document], window_chars: int = 600, overla
 
 def build_policy_index(pdf_path: str, llm=None) -> VectorStoreIndex:
     docs = load_policy_docs_with_pages(pdf_path)
-    # ensure the 'source' is EXACT path
     for d in docs:
         d.metadata["source"] = pdf_path
     nodes = make_line_window_nodes(docs, window_chars=600, overlap=5)
@@ -87,8 +86,7 @@ def make_line_window_nodes(docs: List[Document], window_chars: int = 400, overla
     nodes: List[TextNode] = []
     for d in docs:
         page_text = d.text or ""
-        lines = page_text.splitlines()  # keep "line" notion
-        # Rebuild windows while tracking line ranges
+        lines = page_text.splitlines()  
         buf, start_ln = [], 1
         cur_len = 0
         for i, line in enumerate(lines, start=1):
@@ -102,7 +100,6 @@ def make_line_window_nodes(docs: List[Document], window_chars: int = 400, overla
                         "line_end": i-1,
                     })
                     nodes.append(n)
-                # start new window with overlap: keep last few lines
                 overlap_lines = buf[-overlap:] if overlap < len(buf) else buf
                 buf = overlap_lines.copy()
                 start_ln = max(1, i - len(overlap_lines) + 1)
@@ -123,9 +120,6 @@ def make_line_window_nodes(docs: List[Document], window_chars: int = 400, overla
                 nodes.append(n)
     return nodes
 
-
-
-# Use the exact path of your uploaded Pan policy
 PAN_PATH = "policy/Pan User Account Policy.pdf"  
 CIS_PATH = "policy/CIS_Controls_v8.1_Account.pdf"
 
@@ -137,7 +131,6 @@ if __name__ == "__main__":
 
     policy_paths = [CIS_PATH, PAN_PATH]
 
-    # PREBUILD: page/line-aware indexes + full texts under the SAME keys we'll reference later
     prebuilt_indexes, prebuilt_texts = {}, {}
     for p in policy_paths:
         if not os.path.exists(p):
@@ -155,11 +148,9 @@ if __name__ == "__main__":
         "log_csv_glob": "logs/*.csv",
         "policy_paths": policy_paths,
 
-        # supply prebuilt assets so nodes/policy.build_policy_indexes is a no-op
         "policy_indexes": prebuilt_indexes,
         "policy_texts": prebuilt_texts,
 
-        # Force CIS vs Pan for this run (exact same strings as above)
         "selected_policy_paths": [CIS_PATH, PAN_PATH],
 
         "max_policy_choices": 2,

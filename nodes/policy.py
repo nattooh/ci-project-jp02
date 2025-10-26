@@ -31,11 +31,10 @@ def select_policies(state: dict) -> dict:
     If caller preselected policies, trust that selection.
     Otherwise, ask the LLM to pick up to max_k relevant documents.
     """
-    # ---- NEW: honor manual selection ----
+
     pre = state.get("selected_policy_paths")
     if pre and isinstance(pre, list) and len(pre) >= 2:
         return state
-    # -------------------------------------
 
     llm = ChatOpenAI(model="gpt-4o", temperature=0)
     threat = state.get("threat", "")
