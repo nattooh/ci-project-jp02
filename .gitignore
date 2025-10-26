@@ -1,0 +1,73 @@
+# -----------------------------
+# Python
+# -----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.pkl
+*.log
+
+# Virtual environments
+.env
+.venv/
+venv/
+ENV/
+
+# IDE / editor settings
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# -----------------------------
+# LlamaIndex / LangGraph artifacts
+# -----------------------------
+# Vector index persistence folders
+*.index/
+*.json/
+cis_index.json/
+pan_index.json/
+indexes/
+storage/
+index_store.json
+docstore.json
+graph_store.json
+*_index.json/
+default__vector_store.json
+image__vector_store.json
+index_store.json
+
+# LangGraph checkpoints
+checkpoints/
+runs/
+*.db
+
+# -----------------------------
+# Data and logs
+# -----------------------------
+logs/
+dataset/
+*.csv
+*.xml
+*.evtx
+*.pdf
+*.docx
+*.ipynb
+
+# -----------------------------
+# Local build / output artifacts
+# -----------------------------
+outputs/
+report.txt
+*.tmp
+*.bak
+*.cache
+*.out
+
+# -----------------------------
+# System / macOS
+# -----------------------------
+.DS_Store
+Thumbs.db
