@@ -2,6 +2,7 @@ import os
 
 from graph import build_graph
 from utils.pdf import extract_pdf_text
+from utils.report_export import export_final_report_pdf
 from llama_index.llms.openai import OpenAI
 
 from typing import List
@@ -189,3 +190,17 @@ if __name__ == "__main__":
 
     print("\n=== FINAL REPORT ===\n")
     print(final_state.get("final_report", "No report produced."))
+
+    os.makedirs("outputs", exist_ok=True)
+    pdf_path = export_final_report_pdf(
+        final_state,
+        outfile="outputs/final_report.pdf",
+        meta={
+            "title": "Company Gap Analysis",
+            "author": "<Insert Author Name>",
+            "org": "Pan Company",
+            "run_id": os.getenv("RUN_ID", ""),
+        },
+    )
+    print(f"\n[OK] PDF written to: {pdf_path}")
+

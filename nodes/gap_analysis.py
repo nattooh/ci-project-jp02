@@ -328,10 +328,12 @@ def validate_vs_evidence(state: dict) -> dict:
 
     # Ask for compact, structured mapping we can render nicely later
     prompt = f"""You are a cyber incident investigator.
-Given the **structured gaps** (JSON) and the evidence summary, return a JSON array.
-For each gap, include:
+Given the structured gaps (JSON) and the evidence summary, return a JSON array where EACH gap is confirmed
+AGAINST THE EVIDENCE.
+
+For each confirmed gap include:
 - gap
-- evidence_linkage: 1-2 sentences citing concrete indicators (event IDs, timestamps, IPs, accounts)
+- evidence_linkage: 1–2 sentences with concrete indicators (event IDs, timestamps, IPs, accounts)
 - likely_impact: short phrase
 - confidence: low/medium/high
 

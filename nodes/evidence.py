@@ -63,3 +63,27 @@ Logs (truncated to 500 rows):
     resp = llm.invoke([HumanMessage(content=prompt)])
     state["evidence_summary"] = resp.content
     return state
+
+def derive_required_controls(state: dict) -> dict:
+    """
+    Map observed indicators (from evidence_summary) to control requirements.
+    E.g., for brute-force patterns (4625 bursts -> 4624), we expect lockout policy,
+    SSH rate limit/fail2ban, MFA for privileged accounts, alerting on repeated failures, etc.
+    Returns a normalized list so compare_policies can filter gaps by evidence.
+    """
+    evidence = (state.get("evidence_summary") or "").lower()
+    required = []
+
+    # very lightweight heuristics; you can expand later
+    if "4625" in evidence or "failed logon" in evidence or "brute force" in evidence or "t1110" in evidence:
+        required.extend([
+            {"control": "Account lockout policy", "rationale": "Mitigate repeated invalid logons"},
+            {"control": "SSH rate limiting / fail2ban", "rationale": "Throttle repeated auth attempts on OpenSSH"},
+            {"control": "Alerting on repeated failures", "rationale": "SOC visibility of brute-force attempts"},
+            {"control": "MFA for privileged accounts", "rationale": "Reduce impact of guessed credentials"},
+        ])
+
+    # De-dup & store
+    dedup = {r["control"]: r for r in required}
+    state["required_controls_from_evidence"] = list(dedup.values())
+    return state
