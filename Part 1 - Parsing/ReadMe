@@ -1,6 +1,0 @@
-This folder contains the main parsing script: parser.ipynb
-
-It also contains the logs data evtx file, converted xml file, and the csv:
-- ID4625-OpenSSH brutforce with valid users.evtx
-- ID4625-OpenSSH brutforce with valid users.xml
-- ID4625-OpenSSH brutforce with valid users.csv
