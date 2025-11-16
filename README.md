@@ -3,7 +3,7 @@
 This script orchestrates the full policy–evidence reasoning workflow, where:
 
 Baseline policy: CIS Controls v8.1 (Account Management)
-Target policy: Pan User Account Policy
+Target policy: APN User Account Policy
 Evidence: Windows Event ID 4625 logs (failed logon attempts / brute-force activity)
 
 The goal is to automatically identify whether organizational policies are aligned and enforced based on real evidence.
@@ -19,7 +19,7 @@ The goal is to automatically identify whether organizational policies are aligne
 - Injects prebuilt indexes and extracted text into the shared workflow state
 - Ensures consistent policy references across the pipeline.
 - Runs the graph end-to-end
-- Compares baseline (CIS) vs target (Pan)
+- Compares baseline (CIS Controls) vs target (APN Company Policy)
 - Validates each gap against log-based evidence
 - Generates structured gap summaries and citations
 
