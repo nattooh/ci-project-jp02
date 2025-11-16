@@ -112,7 +112,7 @@ def normalize_llm_json(text: str) -> Any:
 
 def compare_policies(state: dict) -> dict:
     """
-    Compare CIS vs Pan (if present), else compare any two selected policies.
+    Compare CIS vs APN (if present), else compare any two selected policies.
     Prefer verified snippet-based comparison (with page/line citations).
     Fall back to summary-based comparison + line-hint mapping if snippets are missing.
     """
@@ -124,30 +124,30 @@ def compare_policies(state: dict) -> dict:
 
 
 
-    # Prefer auto-detect CIS vs Pan
+    # Prefer auto-detect CIS vs APN
     cis_key = next((p for p in (snippets or summaries) if "CIS_Controls" in p or "CIS" in p), None)
-    pan_key = next((p for p in (snippets or summaries) if "Pan User Account Policy" in p or "Pan" in p), None)
+    apn_key = next((p for p in (snippets or summaries) if "APN User Account Policy" in p or "APN" in p), None)
 
     print(f"[DEBUG] snippet counts: CIS={len(snippets.get(cis_key,[]))}, "
-      f"PAN={len(snippets.get(pan_key,[]))}")
+      f"APN={len(snippets.get(apn_key,[]))}")
     
     print("[DEBUG] snippet keys:", list(snippets.keys()))
     print("[DEBUG] selected:", state.get("selected_policy_paths"))
 
     
 
-    if not (cis_key and pan_key) and len(selected) >= 2:
-        cis_key, pan_key = selected[:2]
-    if not (cis_key and pan_key):
+    if not (cis_key and apn_key) and len(selected) >= 2:
+        cis_key, apn_key = selected[:2]
+    if not (cis_key and apn_key):
         keys = list((snippets or summaries).keys())
         if len(keys) >= 2:
-            cis_key, pan_key = keys[:2]
+            cis_key, apn_key = keys[:2]
         else:
             raise ValueError("Not enough policies to compare.")
 
     # ---------- Path A: snippet-based verified comparison ----------
     baseline_snips = snippets.get(cis_key) or []
-    target_snips   = snippets.get(pan_key) or []
+    target_snips   = snippets.get(apn_key) or []
 
     if baseline_snips and target_snips:
         # Give ONLY these snippets; ask model to return JSON gaps with refs into these snippets
@@ -167,7 +167,7 @@ def compare_policies(state: dict) -> dict:
             "Use ONLY the provided snippets; do not invent citations. "
             "Return JSON list of gaps; each gap has: "
             "{'gap','why','remediation','cis_refs':[{source,page,line_start,line_end,quote}],"
-            "'pan_refs':[{source,page,line_start,line_end,quote}]} . "
+            "'APN_refs':[{source,page,line_start,line_end,quote}]} . "
             "Copy 'quote' verbatim from the snippet text you used."
         )
         prompt = f"{sys}\n\nSNIPPETS JSON:\n{json.dumps(context, ensure_ascii=False)}\n\nReturn JSON only."
@@ -210,13 +210,13 @@ def compare_policies(state: dict) -> dict:
         gaps_structured = []
         for g in gaps:
             cis_ok, cis_refs = verify_and_convert(g.get("cis_refs", []), baseline_snips)
-            pan_ok, pan_refs = verify_and_convert(g.get("pan_refs", []),   target_snips)
+            APN_ok, APN_refs = verify_and_convert(g.get("APN_refs", []),   target_snips)
             gaps_structured.append({
                 "gap": g.get("gap",""),
                 "why": g.get("why",""),
                 "remediation": g.get("remediation",""),
-                "refs": {"policy_a": cis_refs, "policy_b": pan_refs},
-                "__verified": bool(cis_ok and pan_ok),
+                "refs": {"policy_a": cis_refs, "policy_b": APN_refs},
+                "__verified": bool(cis_ok and APN_ok),
             })
 
         # Build human-readable bullets for backward compatibility
@@ -228,13 +228,13 @@ def compare_policies(state: dict) -> dict:
                 f"- **{g.get('gap','(gap)')}** — {g.get('why','')}\n"
                 f"  - Remediation: {g.get('remediation','')}\n"
                 f"  - Policy A ({cis_key}) ranges: {pa_rng or 'n/a'}\n"
-                f"  - Policy B ({pan_key}) ranges: {pb_rng or 'missing'}"
+                f"  - Policy B ({apn_key}) ranges: {pb_rng or 'missing'}"
             )
 
         state["policy_gaps_structured"] = gaps_structured
         state["policy_gaps"] = "\n".join(bullets)
         state["baseline_policy"] = cis_key
-        state["target_policy"] = pan_key
+        state["target_policy"] = apn_key
         return state
 
     # ---------- Path B: FALLBACK to your existing summary-based flow ----------
@@ -259,8 +259,8 @@ Important:
 === BASELINE POLICY (baseline: {cis_key}) SUMMARY ===
 {summaries.get(cis_key, 'N/A')}
 
-=== CURRENT POLICY (target: {pan_key}) SUMMARY ===
-{summaries.get(pan_key, 'N/A')}
+=== CURRENT POLICY (target: {apn_key}) SUMMARY ===
+{summaries.get(apn_key, 'N/A')}
 """
     resp = llm.invoke([HumanMessage(content=comp_prompt)])
     raw = resp.content
@@ -285,7 +285,7 @@ Important:
         g["refs"].setdefault("policy_a", [])
         g["refs"].setdefault("policy_b", [])
         g["refs"]["policy_a"] = attach_lines(cis_key, g["refs"]["policy_a"])
-        g["refs"]["policy_b"] = attach_lines(pan_key, g["refs"]["policy_b"])
+        g["refs"]["policy_b"] = attach_lines(apn_key, g["refs"]["policy_b"])
 
     bullets = []
     for g in gaps_structured:
@@ -295,13 +295,13 @@ Important:
             f"- **{g.get('gap','(gap)')}** — {g.get('why','')}\n"
             f"  - Remediation: {g.get('remediation','')}\n"
             f"  - Policy A ({cis_key}) lines: {pa_lines or 'n/a'}\n"
-            f"  - Policy B ({pan_key}) lines: {pb_lines or 'missing'}"
+            f"  - Policy B ({apn_key}) lines: {pb_lines or 'missing'}"
         )
 
     state["policy_gaps_structured"] = gaps_structured
     state["policy_gaps"] = "\n".join(bullets)
     state["baseline_policy"] = cis_key
-    state["target_policy"] = pan_key
+    state["target_policy"] = apn_key
     return state
 
 
@@ -324,7 +324,7 @@ def validate_vs_evidence(state: dict) -> dict:
     gaps_struct = state.get("policy_gaps_structured", [])
     evidence = state.get("evidence_summary", "")
     cis_key = state.get("baseline_policy", "Policy A")
-    pan_key = state.get("target_policy", "Policy B")
+    apn_key = state.get("target_policy", "Policy B")
 
     # Ask for compact, structured mapping we can render nicely later
     prompt = f"""You are a cyber incident investigator.
@@ -393,7 +393,7 @@ def finalize_report(state: dict) -> dict:
     gaps_struct = state.get("policy_gaps_structured", [])
     linkage_hr = state.get("gaps_evidence_link", "")
     cis_key = state.get("baseline_policy", "Policy A")
-    pan_key = state.get("target_policy", "Policy B")
+    apn_key = state.get("target_policy", "Policy B")
 
     # Build a compact citation block showing lines + quotes for each policy
     def render_citations(policy_key: str, refs: List[Dict[str, Any]]) -> str:
@@ -413,11 +413,11 @@ def finalize_report(state: dict) -> dict:
     per_gap_citations = []
     for g in gaps_struct:
         pa = render_citations(cis_key, g.get("refs", {}).get("policy_a", []))
-        pb = render_citations(pan_key, g.get("refs", {}).get("policy_b", []))
+        pb = render_citations(apn_key, g.get("refs", {}).get("policy_b", []))
         per_gap_citations.append(
             f"- **{g.get('gap','(gap)')}**\n"
             f"  - {cis_key} refs:\n{indent_block(pa, 4)}\n"
-            f"  - {pan_key} refs:\n{indent_block(pb, 4)}"
+            f"  - {apn_key} refs:\n{indent_block(pb, 4)}"
         )
 
     citations_block = "\n".join(per_gap_citations) if per_gap_citations else "_No line citations were generated._"
