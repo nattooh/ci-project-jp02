@@ -121,7 +121,7 @@ def make_line_window_nodes(docs: List[Document], window_chars: int = 400, overla
                 nodes.append(n)
     return nodes
 
-APN_PATH = "policy/APN User Account Policy.pdf"  
+APN_PATH = "policy/APN User Account Policy.pdf" 
 CIS_PATH = "policy/CIS_Controls_v8.1_Account.pdf"
 
 if __name__ == "__main__":
@@ -196,7 +196,7 @@ if __name__ == "__main__":
         final_state,
         outfile="outputs/final_report.pdf",
         meta={
-            "title": "Company Gap Analysis",
+            "title": "Company Policy Analysis",
             "author": "<Insert Author Name>",
             "org": "APN Company",
             "run_id": os.getenv("RUN_ID", ""),
