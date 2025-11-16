@@ -121,7 +121,7 @@ def make_line_window_nodes(docs: List[Document], window_chars: int = 400, overla
                 nodes.append(n)
     return nodes
 
-PAN_PATH = "policy/Pan User Account Policy.pdf"  
+APN_PATH = "policy/APN User Account Policy.pdf"  
 CIS_PATH = "policy/CIS_Controls_v8.1_Account.pdf"
 
 if __name__ == "__main__":
@@ -130,7 +130,7 @@ if __name__ == "__main__":
         raise RuntimeError("OPENAI_API_KEY not set in environment.")
     llm = OpenAI(api_key=openai_key, model="gpt-4o-mini")
 
-    policy_paths = [CIS_PATH, PAN_PATH]
+    policy_paths = [CIS_PATH, APN_PATH]
 
     prebuilt_indexes, prebuilt_texts = {}, {}
     for p in policy_paths:
@@ -142,7 +142,7 @@ if __name__ == "__main__":
         prebuilt_indexes[p] = idx
 
     print("[DEBUG/run_graph] indexed keys:", list(prebuilt_indexes.keys()))
-    print("[DEBUG/run_graph] Pan text chars:", len(prebuilt_texts.get(PAN_PATH, "")))
+    print("[DEBUG/run_graph] APN text chars:", len(prebuilt_texts.get(APN_PATH, "")))
 
     initial_state = {
         "threat": "Repeated failed Windows logon attempts via OpenSSH (Event ID 4625) indicating potential brute-force.",
@@ -152,7 +152,7 @@ if __name__ == "__main__":
         "policy_indexes": prebuilt_indexes,
         "policy_texts": prebuilt_texts,
 
-        "selected_policy_paths": [CIS_PATH, PAN_PATH],
+        "selected_policy_paths": [CIS_PATH, APN_PATH],
 
         "max_policy_choices": 2,
     }
@@ -198,7 +198,7 @@ if __name__ == "__main__":
         meta={
             "title": "Company Gap Analysis",
             "author": "<Insert Author Name>",
-            "org": "Pan Company",
+            "org": "APN Company",
             "run_id": os.getenv("RUN_ID", ""),
         },
     )
