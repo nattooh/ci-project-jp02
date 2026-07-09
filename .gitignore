@@ -2,6 +2,7 @@
 # Python
 # -----------------------------
 __pycache__/
+*/__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -60,11 +61,25 @@ dataset/
 # Local build / output artifacts
 # -----------------------------
 outputs/
+build/
+nodes/
+report/build/
+report/build/CI.pdf
+report/CI.pdf
+latexmkrc
+response_to_reviewers.md
+reviewer_comments.txt
 report.txt
 *.tmp
 *.bak
 *.cache
 *.out
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
 
 # -----------------------------
 # System / macOS

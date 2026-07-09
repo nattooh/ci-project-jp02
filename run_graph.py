@@ -1,21 +1,33 @@
 import os
+import time
 
 from graph import build_graph
 from utils.pdf import extract_pdf_text
 from utils.report_export import export_final_report_pdf
-from llama_index.llms.openai import OpenAI
 
 from typing import List
 from llama_index.core import VectorStoreIndex, Document
-from llama_index.readers.file import PyMuPDFReader
-from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import TextNode
 
-from utils.pdf import extract_pdf_text
-from llama_index.llms.openai import OpenAI
+
+def load_env_file(path: str = ".env") -> None:
+    """Load simple KEY=VALUE pairs without adding a python-dotenv dependency."""
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            os.environ.setdefault(key, value)
 
 
 def load_policy_docs_with_pages(pdf_path: str) -> List[Document]:
+    from llama_index.readers.file import PyMuPDFReader
+
     reader = PyMuPDFReader()
     # version compatibility shim
     try:
@@ -70,65 +82,30 @@ def make_line_window_nodes(docs: List[Document], window_chars: int = 600, overla
                 ))
     return nodes
 
-def build_policy_index(pdf_path: str, llm=None) -> VectorStoreIndex:
+def build_policy_index(pdf_path: str, embed_model=None) -> VectorStoreIndex:
     docs = load_policy_docs_with_pages(pdf_path)
     for d in docs:
         d.metadata["source"] = pdf_path
     nodes = make_line_window_nodes(docs, window_chars=600, overlap=5)
-    return VectorStoreIndex(nodes, llm=llm)
+    return VectorStoreIndex(nodes, embed_model=embed_model)
 
 
+def build_openai_embed_model(api_key: str):
+    from llama_index.embeddings.openai import OpenAIEmbedding
 
-def make_line_window_nodes(docs: List[Document], window_chars: int = 400, overlap: int = 60) -> List[TextNode]:
-    """
-    Split each page's text into small windows and record approximate line ranges.
-    We approximate line numbers by splitting on '\n'; good enough for citations.
-    """
-    nodes: List[TextNode] = []
-    for d in docs:
-        page_text = d.text or ""
-        lines = page_text.splitlines()  
-        buf, start_ln = [], 1
-        cur_len = 0
-        for i, line in enumerate(lines, start=1):
-            seg = (line + "\n")
-            if cur_len + len(seg) > window_chars and buf:
-                txt = "".join(buf).strip()
-                if txt:
-                    n = TextNode(text=txt, metadata={
-                        **d.metadata,
-                        "line_start": start_ln,
-                        "line_end": i-1,
-                    })
-                    nodes.append(n)
-                overlap_lines = buf[-overlap:] if overlap < len(buf) else buf
-                buf = overlap_lines.copy()
-                start_ln = max(1, i - len(overlap_lines) + 1)
-                cur_len = sum(len(x) for x in buf)
-
-            buf.append(seg)
-            cur_len += len(seg)
-
-        # flush
-        if buf:
-            txt = "".join(buf).strip()
-            if txt:
-                n = TextNode(text=txt, metadata={
-                    **d.metadata,
-                    "line_start": start_ln,
-                    "line_end": len(lines),
-                })
-                nodes.append(n)
-    return nodes
+    model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    return OpenAIEmbedding(api_key=api_key, model=model)
 
 APN_PATH = "policy/APN User Account Policy.pdf" 
 CIS_PATH = "policy/CIS_Controls_v8.1_Account.pdf"
 
 if __name__ == "__main__":
+    load_env_file()
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
         raise RuntimeError("OPENAI_API_KEY not set in environment.")
-    llm = OpenAI(api_key=openai_key, model="gpt-4o-mini")
+    use_vector_indexes = os.getenv("USE_VECTOR_INDEXES", "").lower() in {"1", "true", "yes"}
+    embed_model = build_openai_embed_model(openai_key) if use_vector_indexes else None
 
     policy_paths = [CIS_PATH, APN_PATH]
 
@@ -138,8 +115,13 @@ if __name__ == "__main__":
             print(f"[run_graph] WARN: policy file not found: {p}")
             continue
         prebuilt_texts[p] = extract_pdf_text(p) or ""
-        idx = build_policy_index(p, llm=llm)
-        prebuilt_indexes[p] = idx
+        if use_vector_indexes:
+            try:
+                idx = build_policy_index(p, embed_model=embed_model)
+                prebuilt_indexes[p] = idx
+            except Exception as e:
+                print(f"[run_graph] WARN: vector index failed for {p}: {e}")
+                print("[run_graph] WARN: continuing with keyword snippet fallback.")
 
     print("[DEBUG/run_graph] indexed keys:", list(prebuilt_indexes.keys()))
     print("[DEBUG/run_graph] APN text chars:", len(prebuilt_texts.get(APN_PATH, "")))
@@ -151,6 +133,7 @@ if __name__ == "__main__":
 
         "policy_indexes": prebuilt_indexes,
         "policy_texts": prebuilt_texts,
+        "skip_policy_index_build": True,
 
         "selected_policy_paths": [CIS_PATH, APN_PATH],
 
@@ -158,7 +141,11 @@ if __name__ == "__main__":
     }
 
     graph = build_graph()
+    started = time.perf_counter()
     final_state = graph.invoke(initial_state)
+    elapsed_seconds = time.perf_counter() - started
+    final_state["elapsed_seconds"] = elapsed_seconds
+    print(f"[METRIC] elapsed_seconds={elapsed_seconds:.3f}")
 
     # ----- Print ONLY the gaps after evidence analysis, with linkage -----
     print("\n=== GAPS VERIFIED AGAINST EVIDENCE ===\n")
@@ -203,4 +190,3 @@ if __name__ == "__main__":
         },
     )
     print(f"\n[OK] PDF written to: {pdf_path}")
-
