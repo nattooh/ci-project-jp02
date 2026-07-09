@@ -106,6 +106,28 @@ def normalize_llm_json(text: str) -> Any:
     raise ValueError("Could not parse JSON from LLM output")
 
 
+def _has_line_ref(refs: List[Dict[str, Any]]) -> bool:
+    for ref in refs or []:
+        line_numbers = ref.get("line_numbers") or []
+        if any(ln is not None for ln in line_numbers):
+            return True
+    return False
+
+
+def _has_any_policy_ref(gap: Dict[str, Any]) -> bool:
+    refs = gap.get("refs", {}) or {}
+    return _has_line_ref(refs.get("policy_a", [])) or _has_line_ref(refs.get("policy_b", []))
+
+
+def _drop_uncited_gaps(gaps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Keep the workflow evidence-led without letting derived controls become
+    uncited policy findings. A gap must cite at least one retrieved policy
+    line-window; otherwise it is not auditable enough for the final report.
+    """
+    return [g for g in gaps if _has_any_policy_ref(g)]
+
+
 # ----------------------------
 # Core steps
 # ----------------------------
@@ -121,6 +143,8 @@ def compare_policies(state: dict) -> dict:
     summaries: Dict[str, str] = state.get("policy_control_summaries", {}) or {}
     snippets: Dict[str, List[Dict[str, Any]]] = state.get("policy_snippets", {}) or {}
     selected: List[str] = state.get("selected_policy_paths", []) or []
+    evidence_summary = state.get("evidence_summary", "")
+    required_controls = state.get("required_controls_from_evidence", [])
 
 
 
@@ -152,6 +176,8 @@ def compare_policies(state: dict) -> dict:
     if baseline_snips and target_snips:
         # Give ONLY these snippets; ask model to return JSON gaps with refs into these snippets
         context = {
+            "incident_evidence_summary": evidence_summary,
+            "required_controls_from_evidence": required_controls,
             "baseline_snippets": [
                 {"source": s["source"], "page": s["page"], "line_start": s["line_start"], "line_end": s["line_end"], "text": s["text"][:1200]}
                 for s in baseline_snips if s.get("text")
@@ -165,6 +191,11 @@ def compare_policies(state: dict) -> dict:
         sys = (
             "You are an auditor. Compare Baseline (Policy A) vs Target (Policy B). "
             "Use ONLY the provided snippets; do not invent citations. "
+            "Return only gaps that are relevant to the incident evidence and required controls. "
+            "Do not return generic password age, password length, or password complexity gaps unless the incident evidence directly requires them. "
+            "If a policy difference is not supported by the incident evidence, omit it rather than listing it as a main gap. "
+            "If Policy B already contains a relevant control but it appears weak for the incident, frame the gap as a control-strength or specificity gap, not as a missing control. "
+            "Do not claim Policy A requires a specific threshold unless the supplied Policy A quote says so. "
             "Return JSON list of gaps; each gap has: "
             "{'gap','why','remediation','cis_refs':[{source,page,line_start,line_end,quote}],"
             "'APN_refs':[{source,page,line_start,line_end,quote}]} . "
@@ -219,6 +250,8 @@ def compare_policies(state: dict) -> dict:
                 "__verified": bool(cis_ok and APN_ok),
             })
 
+        gaps_structured = _drop_uncited_gaps(gaps_structured)
+
         # Build human-readable bullets for backward compatibility
         bullets = []
         for g in gaps_structured:
@@ -253,8 +286,18 @@ Return **ONLY** valid JSON as an array of gap objects (no prose).
 
 Important:
 - Policy A is the baseline (CIS or equivalent).
+- Return only gaps that are relevant to the incident evidence and required controls.
+- Do not return generic password age, password length, or password complexity gaps unless the incident evidence directly requires them.
+- If Policy B already contains a relevant control but it appears weak for the incident, frame the gap as a control-strength or specificity gap, not as a missing control.
+- Do not claim Policy A requires a specific threshold unless the supplied Policy A quote says so.
 - Use **short quotes** for line_hint that we can search for in the original full-text.
 - If Policy B is missing a control, say so; the B refs can include a short hint like "missing" with empty line_numbers.
+
+=== INCIDENT EVIDENCE SUMMARY ===
+{evidence_summary}
+
+=== REQUIRED CONTROLS FROM EVIDENCE ===
+{json.dumps(required_controls, ensure_ascii=False)}
 
 === BASELINE POLICY (baseline: {cis_key}) SUMMARY ===
 {summaries.get(cis_key, 'N/A')}
@@ -286,6 +329,8 @@ Important:
         g["refs"].setdefault("policy_b", [])
         g["refs"]["policy_a"] = attach_lines(cis_key, g["refs"]["policy_a"])
         g["refs"]["policy_b"] = attach_lines(apn_key, g["refs"]["policy_b"])
+
+    gaps_structured = _drop_uncited_gaps(gaps_structured)
 
     bullets = []
     for g in gaps_structured:
@@ -328,14 +373,19 @@ def validate_vs_evidence(state: dict) -> dict:
 
     # Ask for compact, structured mapping we can render nicely later
     prompt = f"""You are a cyber incident investigator.
-Given the structured gaps (JSON) and the evidence summary, return a JSON array where EACH gap is confirmed
-AGAINST THE EVIDENCE.
+Given the structured gaps (JSON) and the evidence summary, assess how strongly EACH gap is supported
+by the incident evidence. Do not treat policy-only weaknesses as directly confirmed by logs.
 
-For each confirmed gap include:
+For each gap include:
 - gap
 - evidence_linkage: 1–2 sentences with concrete indicators (event IDs, timestamps, IPs, accounts)
+- evidence_support: one of direct/indirect/unsupported
 - likely_impact: short phrase
 - confidence: low/medium/high
+
+Use "direct" only when the logs directly show the policy/control failure itself.
+Use "indirect" when the logs show an incident pattern that makes the policy gap relevant, such as repeated failed logons making lockout or monitoring controls important.
+Do not infer account lockout merely from the absence of successful logons.
 
 Return ONLY valid JSON (no prose).
 
@@ -360,6 +410,7 @@ Evidence Summary:
     for m in mapping:
         bullets.append(
             f"- **{m.get('gap','(gap)')}** → {m.get('evidence_linkage','')}"
+            f" | Evidence support: {m.get('evidence_support','')}"
             f" | Impact: {m.get('likely_impact','')} | Confidence: {m.get('confidence','')}"
         )
 
@@ -370,7 +421,7 @@ Evidence Summary:
 
 def finalize_report(state: dict) -> dict:
     """
-    Produce a cohesive report that keeps line-level citations visible.
+    Produce a cohesive report that keeps line-window citations visible.
 
     Inputs:
       - state["threat"]
@@ -431,10 +482,17 @@ def finalize_report(state: dict) -> dict:
 4) Gaps Identified (clear bullets; keep it short)
 5) Gap→Evidence Linkage (compact bullets)
 6) Actionable Recommendations (prioritized: quick wins then longer-term)
-7) **Policy Line Citations** (per-gap, show which line numbers were relied on for the comparison)
+7) **Policy Line-Window Citations** (per-gap, show which line ranges were relied on for the comparison)
 
 Use the provided content faithfully.
 Do not invent citations.
+Policy A is the baseline and Policy B is the target/current organisational policy.
+When recommending policy changes, direct them at Policy B unless the provided gap text explicitly says otherwise.
+If Policy B already has the relevant control, recommend strengthening, clarifying, tuning, or testing that control rather than "implementing" it.
+If a gap is only indirectly supported by the incident evidence, say so instead of presenting it as directly proven by the logs.
+Do not include unsupported gaps in Actionable Recommendations. Unsupported gaps may be mentioned only as policy-only observations.
+Prioritize recommendations for direct or indirect evidence support.
+Do not infer account lockout from the absence of successful logons.
 
 Threat:
 {threat}
@@ -451,7 +509,7 @@ Gaps (human-readable):
 Gap→Evidence Linkage (bullets):
 {linkage_hr}
 
-Policy Line Citations (pre-rendered):
+Policy Line-Window Citations (pre-rendered):
 {citations_block}
 """
     resp = llm.invoke([HumanMessage(content=prompt)])
